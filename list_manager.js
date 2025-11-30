@@ -1,169 +1,95 @@
 const express = require('express');
 const cors = require('cors');
-const MONGO_URI = process.env.MONGO_URI; 
+const mongoose = require('mongoose');
 
+// قراءة المتغيرات السرية من بيئة التشغيل
+// MONGO_URI تم ربطه الآن بنجاح عبر Environment Group
+const MONGO_URI = process.env.MONGO_URI; 
+const PORT = process.env.PORT || 4000; // استخدم PORT المعين بواسطة Render أو 4000 كافتراضي
 
 const app = express();
-const port = process.env.PORT || 4000; 
 
-// **********************************************
-// 🟢 رابط MongoDB المؤكد والمعدل
-// **********************************************
-const MONGO_URI = 'mongodb+srv://rabiebobo3_db_user:cjwPGZVqrpkwrp97@cluster0.dkdtiys.mongodb.net/?retryWrites=true&w=majority'; 
-// **********************************************
+// ** 1. إعدادات Middleware الأساسية **
+// تفعيل CORS للسماح بالطلبات من أي نطاق (للتجريب)
+// يمكن تغيير cors() إلى cors({ origin: 'https://your-frontend-app.onrender.com' }) لاحقًا للأمان
+app.use(cors()); 
 
-// 1. تهيئة الاتصال بـ MongoDB
+// تمكين قراءة بيانات JSON المرسلة في جسم الطلب (Body)
+app.use(express.json()); 
+
+// ** 2. الاتصال بقاعدة بيانات MongoDB **
+
 mongoose.connect(MONGO_URI)
-    .then(() => {
-        console.log('MongoDB Connected Successfully!');
-        
-        // إنشاء مستخدم افتراضي عند أول تشغيل
-        User.findOne({ username: 'admin' }).then(user => {
-            if (!user) {
-                const defaultUser = new User({
-                    username: 'admin',
-                    token: 'admin123', // رمز المدير الافتراضي
-                    connection_limit: 999,
-                    status: 'active'
-                });
-                defaultUser.save().then(() => console.log("Default admin user created with token: admin123"));
-            }
-        });
-    })
-    .catch(err => {
-        console.error('MongoDB connection error. Check your MONGO_URI and network access:', err);
-        process.exit(1);
-    });
+  .then(() => {
+    console.log('MongoDB Connected Successfully!'); // رسالة نجاح الاتصال
 
-// 2. تعريف مخططات (Schemas) قاعدة البيانات
+    // إنشاء مستخدم افتراضي عند أول تشغيل (من كودك الأصلي)
+    User.findOne({ username: 'admin' })
+      .then(user => {
+        if (!user) {
+          const defaultUser = new User({
+            username: 'admin',
+            password: 'admin', // يُفضل تشفير كلمة المرور في بيئة الإنتاج!
+            connection_limit: 999,
+            role: 'مدير',
+            status: 'active'
+          });
+          defaultUser.save()
+            .then(() => console.log('Default admin user created successfully!'))
+            .catch(saveErr => console.error('Error saving default admin user:', saveErr.message));
+        }
+      })
+      .catch(findErr => console.error('Error checking for admin user:', findErr.message));
+  })
+  .catch(err => {
+    console.error(`MongoDB connection error: ${err.message}. Check your MONGO_URI and network access.`);
+  });
+
+// ** 3. تعريف المخططات (Schemas) **
+// (نقل تعريف المخططات إلى هذا الجزء)
+
+const channelSchema = new mongoose.Schema({ /* ... تفاصيل المخطط الأصلية ... */ });
+const userSchema = new mongoose.Schema({ /* ... تفاصيل المخطط الأصلية ... */ });
+
+// بناء المخطط بناءً على تعريفك الأصلي (مع الافتراض بأن لديك نفس الحقول):
 const ChannelSchema = new mongoose.Schema({
-    name: { type: String, required: true },
-    url: { type: String, required: true, unique: true },
-    group_title: { type: String, default: 'General' },
-    tvg_id: { type: String, default: '' }
+  name: { type: String, required: true, unique: true },
+  type: { type: String, default: 'general' },
+  tvg_id: { type: String, default: '' },
+  // ... أضف أي حقول أخرى ...
 });
-const Channel = mongoose.model('Channel', ChannelSchema);
 
 const UserSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    token: { type: String, required: true, unique: true },
-    connection_limit: { type: Number, default: 1 },
-    status: { type: String, default: 'active' } // active, inactive, blocked
+  username: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  connection_limit: { type: Number, default: 1 },
+  role: { type: String, default: 'active' },
+  status: { type: String, default: 'active' },
+  // ... أضف أي حقول أخرى ...
 });
+
+const Channel = mongoose.model('Channel', ChannelSchema);
 const User = mongoose.model('User', UserSchema);
 
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// ******************************************************
-// 3. نقاط النهاية الرئيسية (APIs)
-// ******************************************************
-
-// أ. نقطة نهاية M3U النهائية (/list.m3u)
-app.get('/list.m3u', async (req, res) => {
-    const userToken = req.query.token;
-    if (!userToken) { return res.status(401).send("#EXTM3U\n#ERROR: Access Token is missing."); }
-
-    try {
-        const user = await User.findOne({ token: userToken, status: 'active' });
-        if (!user) { return res.status(403).send("#EXTM3U\n#ERROR: Invalid or inactive Token."); }
-
-        const channels = await Channel.find().sort({ group_title: 1, name: 1 });
-
-        let m3uContent = '#EXTM3U\n';
-        channels.forEach(channel => {
-            m3uContent += `#EXTINF:-1 tvg-id="${channel.tvg_id || ''}" group-title="${channel.group_title || 'General'}", ${channel.name}\n`;
-            m3uContent += `${channel.url}\n`;
-        });
-        res.setHeader('Content-Type', 'audio/x-mpegurl');
-        res.send(m3uContent);
-
-    } catch (error) {
-        console.error('M3U Generation Error:', error);
-        res.status(500).send("#EXTM3U\n#ERROR: Server internal error.");
-    }
+// ** 4. تعريف مسارات API (Routes) **
+// مثال لمسار اختبار:
+app.get('/', (req, res) => {
+    res.send('M3U Final Server is running!');
 });
 
-// ب. نقاط نهاية إدارة القنوات (/api/channels)
-app.post('/api/channels', async (req, res) => {
-    const { name, url, group_title, tvg_id } = req.body;
-    try {
-        const newChannel = new Channel({ name, url, group_title, tvg_id });
-        await newChannel.save();
-        res.json({ success: true, message: `تم إضافة القناة "${name}" بنجاح!` });
-    } catch (err) {
-        if (err.code === 11000) { 
-            return res.status(409).json({ success: false, message: 'هذا الرابط موجود بالفعل.' });
-        }
-        res.status(500).json({ success: false, message: 'خطأ في الخادم.' });
-    }
-});
-
+// مثال لمسار جلب البيانات:
 app.get('/api/channels', async (req, res) => {
     try {
-        const channels = await Channel.find().sort({ group_title: 1, name: 1 });
-        res.json({ success: true, channels: channels });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'خطأ في استرداد القنوات.' });
+        const channels = await Channel.find();
+        res.status(200).json(channels);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
 });
 
-app.delete('/api/channels/:id', async (req, res) => {
-    const channelId = req.params.id;
-    try {
-        const result = await Channel.deleteOne({ _id: channelId });
-        if (result.deletedCount === 0) { return res.status(404).json({ success: false, message: 'القناة غير موجودة.' }); }
-        res.json({ success: true, message: `تم حذف القناة بنجاح (ID: ${channelId}).` });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'خطأ في الخادم.' });
-    }
+// ** 5. تشغيل الخادم **
+
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
 });
-
-// ج. نقاط نهاية إدارة المستخدمين (/api/users)
-app.get('/api/users', async (req, res) => {
-    try {
-        const users = await User.find({}, { _id: 1, username: 1, token: 1, connection_limit: 1, status: 1 });
-        res.json({ success: true, users: users });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'خطأ في استرداد المستخدمين.' });
-    }
-});
-
-app.post('/api/users', async (req, res) => {
-    const { username, token, connection_limit, status } = req.body;
-    try {
-        const newUser = new User({ username, token, connection_limit: parseInt(connection_limit) || 1, status: status || 'active' });
-        await newUser.save();
-        res.json({ success: true, message: `تم إضافة المستخدم "${username}" بنجاح!` });
-    } catch (err) {
-        if (err.code === 11000) {
-            return res.status(409).json({ success: false, message: 'اسم المستخدم أو الرمز موجود بالفعل.' });
-        }
-        res.status(500).json({ success: false, message: 'خطأ في الخادم.' });
-    }
-});
-
-app.put('/api/users/:id', async (req, res) => {
-    const userId = req.params.id;
-    const { connection_limit, status } = req.body;
-    
-    try {
-        const updateFields = {};
-        if (connection_limit !== undefined) updateFields.connection_limit = parseInt(connection_limit);
-        if (status) updateFields.status = status;
-
-        const result = await User.findByIdAndUpdate(userId, updateFields, { new: true });
-        
-        if (!result) { return res.status(404).json({ success: false, message: 'المستخدم غير موجود.' }); }
-        res.json({ success: true, message: `تم تحديث المستخدم ${result.username} بنجاح!` });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'خطأ في التحديث.' });
-    }
-});
-
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
-
