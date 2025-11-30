@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة خادم M3U السحابي</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background-color: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        h2 { border-bottom: 2px solid #007bff; padding-bottom: 10px; color: #007bff; margin-top: 30px; }
+        form { background-color: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 10px; margin: 8px 0; display: inline-block; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; transition: background-color 0.3s; }
+        button:hover { background-color: #218838; }
+        .tab-button { background-color: #6c757d; margin-left: 5px; }
+        .tab-button.active { background-color: #007bff; }
+        .tab-content { display: none; padding: 15px 0; border-top: 1px solid #ddd; margin-top: 10px; }
+        .message { padding: 10px; margin-bottom: 15px; border-radius: 5px; font-weight: bold; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: right; }
+        th { background-color: #f2f2f2; color: #333; }
+        .delete-btn { background-color: #dc3545; padding: 5px 10px; font-size: 14px; }
+        .delete-btn:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>إدارة الخادم السحابي M3U (MongoDB)</h1>
+        
+        <script>
+            const API_URL = 'https://YOUR_APP_CREATOR_DOMAIN/api'; 
+            
+            // تحقق من أن الرابط ليس الرابط الافتراضي
+            if (API_URL.includes('YOUR_APP_CREATOR_DOMAIN')) {
+                alert("!!تحذير!!: لم تقم بتعديل رابط API. لن يعمل التطبيق حتى تقوم بتغييره إلى رابط الخادم السحابي الخاص بك.");
+            }
+        </script>
+        
+        <div class="tabs">
+            <button class="tab-button active" onclick="openTab(event, 'Channels')">إدارة القنوات</button>
+            <button class="tab-button" onclick="openTab(event, 'Users')">إدارة المستخدمين (Tokens)</button>
+        </div>
+
+        <div id="Channels" class="tab-content" style="display: block;">
+            <h2>إضافة قناة جديدة</h2>
+            <div id="channelMessage" class="message" style="display:none;"></div>
+            <form id="addChannelForm">
+                <label for="name">اسم القناة:</label>
+                <input type="text" id="name" required>
+
+                <label for="url">رابط القناة (URL):</label>
+                <input type="text" id="url" required>
+
+                <label for="group_title">مجموعة القناة:</label>
+                <input type="text" id="group_title" value="General">
+
+                <label for="tvg_id">TVG ID (اختياري):</label>
+                <input type="text" id="tvg_id">
+
+                <button type="submit">إضافة القناة</button>
+            </form>
+
+            <h2>قائمة القنوات الحالية</h2>
+            <table id="channelsTable">
+                <thead>
+                    <tr>
+                        <th>الاسم</th>
+                        <th>المجموعة</th>
+                        <th>الرابط</th>
+                        <th>حذف</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+
+        <div id="Users" class="tab-content">
+            <h2>إضافة مستخدم جديد (Token)</h2>
+            <div id="userMessage" class="message" style="display:none;"></div>
+            <form id="addUserForm">
+                <label for="username">اسم المستخدم:</label>
+                <input type="text" id="username" required>
+
+                <label for="token">رمز الاتصال (Token):</label>
+                <input type="text" id="token" required>
+
+                <label for="connection_limit">عدد حدود الاتصال:</label>
+                <input type="number" id="connection_limit" value="1" min="1" required>
+
+                <label for="userStatus">الحالة:</label>
+                <select id="userStatus">
+                    <option value="active">نشط</option>
+                    <option value="inactive">غير نشط</option>
+                    <option value="blocked">محظور</option>
+                </select>
+
+                <button type="submit">إضافة المستخدم</button>
+            </form>
+
+            <h2>قائمة المستخدمين الحالية</h2>
+            <table id="usersTable">
+                <thead>
+                    <tr>
+                        <th>الاسم</th>
+                        <th>الرمز (Token)</th>
+                        <th>حد الاتصال</th>
+                        <th>الحالة</th>
+                        <th>إجراءات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            loadChannels();
+            loadUsers();
+            
+            // تهيئة واجهة المستخدم للنماذج
+            document.getElementById('addChannelForm').addEventListener('submit', addChannel);
+            document.getElementById('addUserForm').addEventListener('submit', addUser);
+        });
+
+        // ----------------- وظائف عامة -----------------
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tab-button");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+
+        function showMessage(type, message, elementId) {
+            const element = document.getElementById(elementId);
+            element.className = 'message ' + type;
+            element.textContent = message;
+            element.style.display = 'block';
+            setTimeout(() => { element.style.display = 'none'; }, 5000);
+        }
+
+        // ----------------- وظائف إدارة القنوات -----------------
+
+        async function loadChannels() {
+            try {
+                const response = await fetch(`${API_URL}/channels`);
+                const data = await response.json();
+                const tbody = document.getElementById('channelsTable').getElementsByTagName('tbody')[0];
+                tbody.innerHTML = ''; 
+
+                if (data.success && data.channels) {
+                    data.channels.forEach(channel => {
+                        const row = tbody.insertRow();
+                        row.insertCell(0).textContent = channel.name;
+                        row.insertCell(1).textContent = channel.group_title;
+                        row.insertCell(2).textContent = channel.url.substring(0, 50) + '...'; 
+                        
+                        const deleteCell = row.insertCell(3);
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'حذف';
+                        deleteButton.className = 'delete-btn';
+                        deleteButton.onclick = () => deleteChannel(channel._id);
+                        deleteCell.appendChild(deleteButton);
+                    });
+                }
+            } catch (error) {
+                showMessage('error', 'فشل الاتصال بالخادم عند تحميل القنوات.', 'channelMessage');
+            }
+        }
+
+        async function addChannel(event) {
+            event.preventDefault();
+            const channel = {
+                name: document.getElementById('name').value,
+                url: document.getElementById('url').value,
+                group_title: document.getElementById('group_title').value,
+                tvg_id: document.getElementById('tvg_id').value,
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/channels`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(channel)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', data.message, 'channelMessage');
+                    document.getElementById('addChannelForm').reset();
+                    loadChannels();
+                } else {
+                    showMessage('error', data.message || 'خطأ في إضافة القناة.', 'channelMessage');
+                }
+            } catch (error) {
+                showMessage('error', 'فشل الاتصال بالخادم.', 'channelMessage');
+            }
+        }
+
+        async function deleteChannel(id) {
+            if (!confirm('هل أنت متأكد من حذف هذه القناة؟')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/channels/${id}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', data.message, 'channelMessage');
+                    loadChannels();
+                } else {
+                    showMessage('error', data.message || 'خطأ في حذف القناة.', 'channelMessage');
+                }
+            } catch (error) {
+                showMessage('error', 'فشل الاتصال بالخادم.', 'channelMessage');
+            }
+        }
+        
+        // ----------------- وظائف إدارة المستخدمين -----------------
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_URL}/users`);
+                const data = await response.json();
+                const tbody = document.getElementById('usersTable').getElementsByTagName('tbody')[0];
+                tbody.innerHTML = ''; 
+
+                if (data.success && data.users) {
+                    data.users.forEach(user => {
+                        const row = tbody.insertRow();
+                        row.insertCell(0).textContent = user.username;
+                        row.insertCell(1).textContent = user.token;
+                        row.insertCell(2).textContent = user.connection_limit;
+                        row.insertCell(3).textContent = user.status === 'active' ? 'نشط' : (user.status === 'blocked' ? 'محظور' : 'غير نشط');
+                        
+                        const actionsCell = row.insertCell(4);
+                        
+                        // زر التعديل (لتعديل limit/status)
+                        const editButton = document.createElement('button');
+                        editButton.textContent = 'تعديل الحالة/الحد';
+                        editButton.style.backgroundColor = '#ffc107';
+                        editButton.style.color = '#333';
+                        editButton.onclick = () => showEditUserModal(user);
+                        actionsCell.appendChild(editButton);
+                    });
+                }
+            } catch (error) {
+                showMessage('error', 'فشل الاتصال بالخادم عند تحميل المستخدمين.', 'userMessage');
+            }
+        }
+        
+        function showEditUserModal(user) {
+            const newLimit = prompt(`تعديل حد الاتصال للمستخدم ${user.username} (الحد الحالي: ${user.connection_limit}):`, user.connection_limit);
+            if (newLimit !== null && !isNaN(newLimit)) {
+                updateUser(user._id, { connection_limit: newLimit });
+            }
+            const newStatus = prompt(`تعديل حالة المستخدم ${user.username} (الحالة الحالية: ${user.status}). أدخل: active, inactive, أو blocked:`, user.status);
+            if (newStatus !== null && ['active', 'inactive', 'blocked'].includes(newStatus)) {
+                 updateUser(user._id, { status: newStatus });
+            }
+        }
+
+        async function updateUser(id, updates) {
+            try {
+                const response = await fetch(`${API_URL}/users/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMessage('success', data.message, 'userMessage');
+                    loadUsers();
+                } else {
+                    showMessage('error', data.message || 'خطأ في تعديل المستخدم.', 'userMessage');
+                }
+            } catch (error) {
+                showMessage('error', 'فشل الاتصال بالخادم.', 'userMessage');
+            }
+        }
+
+
+        async function addUser(event) {
+            event.preventDefault();
+            const user = {
+                username: document.getElementById('username').value,
+                token: document.getElementById('token').value,
+                connection_limit: document.getElementById('connection_limit').value,
+                status: document.getElementById('userStatus').value,
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(user)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', data.message, 'userMessage');
+                    document.getElementById('addUserForm').reset();
+                    loadUsers();
+                } else {
+                    showMessage('error', data.message || 'خطأ في إضافة المستخدم.', 'userMessage');
+                }
+            } catch (error) {
+                showMessage('error', 'فشل الاتصال بالخادم.', 'userMessage');
+            }
+        }
+
+    </script>
+</body>
+</html>
