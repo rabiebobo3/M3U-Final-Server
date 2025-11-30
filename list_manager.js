@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
+const MONGO_URI = process.env.MONGO_URI; 
+
 
 const app = express();
 const port = process.env.PORT || 4000; 
@@ -165,3 +166,4 @@ app.put('/api/users/:id', async (req, res) => {
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
+
